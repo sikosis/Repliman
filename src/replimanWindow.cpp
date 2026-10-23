@@ -433,6 +433,13 @@ replimanWindow::FindDisabledReplicant(int64 storageID, BMessage *record,
 void
 replimanWindow::UpdateList(bool make_empty)
 {
+	xListItem *selectedItem = dynamic_cast<xListItem*>(
+		fReplicantList->ItemAt(fReplicantList->CurrentSelection()));
+	bool hadSelection = selectedItem != NULL;
+	bool selectedDisabled = hadSelection && selectedItem->IsDisabled();
+	int32 selectedID = hadSelection ? selectedItem->GetID() : -1;
+	int32 selectedLocation = hadSelection ? selectedItem->GetLocation() : -1;
+	int64 selectedStorageID = hadSelection ? selectedItem->GetStorageID() : -1;
 	bool result;
 	
 	if (make_empty)
@@ -444,6 +451,27 @@ replimanWindow::UpdateList(bool make_empty)
 		AppendDisabledReplicants();
 	
 	if (result || make_empty) {
+		if (!make_empty) {
+			fReplicantList->DeselectAll();
+			if (hadSelection) {
+				for (int32 index = 0; index < fReplicantList->CountItems(); index++) {
+					xListItem *item = dynamic_cast<xListItem*>(
+						fReplicantList->ItemAt(index));
+					if (item == NULL || item->IsDisabled() != selectedDisabled)
+						continue;
+
+					bool matches = selectedDisabled
+						? item->GetStorageID() == selectedStorageID
+						: item->GetID() == selectedID
+							&& item->GetLocation() == selectedLocation;
+					if (matches) {
+						fReplicantList->Select(index);
+						break;
+					}
+				}
+			}
+		}
+
 		PostMessage(CMD_REP_SELECTION_CHANGED);
 		PostMessage(CMD_RESIZE_TO_CONTENT);
 	}
@@ -743,14 +771,14 @@ replimanWindow::GetReplicantArchive(int32 uid, int32 location,
 bool
 replimanWindow::IsReplicantLoaded(int32 uid) const
 {
-	/*
-	 determine if the specified replicant (the unique ID of the replicant)
-	 still exists in the target container/shelf. If we can get the name then the 
-	 replicant still exists.
-	 */
-	BMessage	reply;	
-	status_t	err = GetReplicantName(uid, &reply);
-	return (err == B_OK);
+	int32 index = 0;
+	int32 loadedID;
+	while ((loadedID = GetReplicantAt(index++)) >= B_OK) {
+		if (loadedID == uid)
+			return true;
+	}
+
+	return false;
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
