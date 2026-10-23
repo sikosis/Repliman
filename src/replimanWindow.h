@@ -68,6 +68,7 @@ private:
 	// These are the interesting functions showing how you can 
 	// interact via BMessages with a Shelf/Container view
 	BMessenger		MessengerForTarget(type_code w) const;
+	BMessenger		ContainerMessengerForTarget(type_code w) const;
 	int32			GetReplicantAt(int32 index) const;
 	status_t		GetReplicantName(int32 uid, BMessage *result) const;
 	status_t		GetReplicantArchive(int32 uid, int32 location,

@@ -13,12 +13,15 @@
 #endif
 
 #include <Alert.h>
+#include <Archivable.h>
 #include <Directory.h>
 #include <File.h>
 #include <LayoutBuilder.h>
 #include <OS.h>
 #include <Resources.h>
 #include <Screen.h>
+
+#include <MessagePrivate.h>
 
 #include <string.h>
 
@@ -863,25 +866,82 @@ replimanWindow::MessengerForTarget(type_code w) const
 
 /*------------------------------------------------------------*/
 
+BMessenger
+replimanWindow::ContainerMessengerForTarget(type_code w) const
+{
+	BMessage request(B_GET_PROPERTY);
+	BMessenger target;
+	BMessenger result;
+
+	request.AddSpecifier("Messenger");
+	switch (w) {
+		case M_DESKBAR:
+			request.AddSpecifier("View", "Status");
+			request.AddSpecifier("Window", "Deskbar");
+			target = BMessenger("application/x-vnd.Be-TSKB", -1);
+			break;
+		case M_DESKTOP:
+			request.AddSpecifier("View", "PoseView");
+			if (!FindDesktopMessenger(&target)) {
+				request.AddSpecifier("Window", int32(0));
+				target = BMessenger("application/x-vnd.Be-TRAK", -1);
+			}
+			break;
+		default:
+			return result;
+	}
+
+	BMessage reply;
+	if (target.SendMessage(&request, &reply) == B_OK)
+		reply.FindMessenger("result", &result);
+
+	return result;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+/*------------------------------------------------------------*/
+
 status_t
 replimanWindow::RestoreReplicant(const BMessage &archive, int32 location,
 	BPoint position) const
 {
-	BMessenger target = MessengerForTarget(location);
-	if (!target.IsValid())
+	if (location == M_DESKBAR) {
+		BMessage archiveCopy(archive);
+		image_id image = -1;
+		BArchivable *archivable = instantiate_object(&archiveCopy, &image);
+		BView *view = dynamic_cast<BView*>(archivable);
+		if (view == NULL) {
+			delete archivable;
+			if (image >= B_OK)
+				unload_add_on(image);
+			return B_ERROR;
+		}
+
+		BDeskbar deskbar;
+		status_t status = deskbar.AddItem(view);
+		delete view;
+		if (image >= B_OK)
+			unload_add_on(image);
+		return status;
+	}
+
+	BMessenger container = ContainerMessengerForTarget(location);
+	if (!container.IsValid())
 		return B_BAD_VALUE;
 
-	BMessage request(B_CREATE_PROPERTY);
-	BMessage reply;
-	status_t status = request.AddMessage("data", &archive);
+	// The Shelf's scripted create path retains a temporary BMessage. Sending a
+	// real drop makes BShelf detach and own the received archive instead.
+	BMessage droppedArchive(archive);
+	droppedArchive.what = B_ARCHIVED_OBJECT;
+	status_t status = droppedArchive.AddPoint("_drop_point_", position);
 	if (status == B_OK)
-		status = request.AddPoint("location", position);
-	if (status == B_OK)
-		status = request.AddSpecifier("Replicant");
+		status = droppedArchive.AddPoint("_drop_offset_", B_ORIGIN);
 	if (status != B_OK)
 		return status;
 
-	status = target.SendMessage(&request, &reply);
+	BMessage::Private(droppedArchive).SetWasDropped(true);
+	BMessage reply;
+	status = container.SendMessage(&droppedArchive, &reply);
 	if (status != B_OK)
 		return status;
 

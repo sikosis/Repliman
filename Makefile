@@ -16,7 +16,7 @@ RSRCS = resources/repliman.rsrc resources/data.rsrc
 
 LIBS = be $(STDCPPLIBS)
 LIBPATHS =
-SYSTEM_INCLUDE_PATHS =
+SYSTEM_INCLUDE_PATHS = /boot/system/develop/headers/private/app
 LOCAL_INCLUDE_PATHS = src
 
 OPTIMIZE := FULL
