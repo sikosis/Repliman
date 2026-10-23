@@ -38,6 +38,7 @@ enum {
 	M_SET_DESKTOP_TARGET		= 'strk',
 	CMD_DELETE_REPLICANT		= 'delr',
 	CMD_REP_SELECTION_CHANGED	= 'rslc',
+	CMD_RESIZE_TO_CONTENT		= 'rsiz',
 	CMD_TICK					= 'tick',
 	
 	M_DESKBAR					= M_SET_DESKBAR_TARGET,
@@ -45,8 +46,6 @@ enum {
 };
 	
 /*------------------------------------------------------------*/
-class xButton;
-
 class replimanWindow : public BWindow {
 public:
 					replimanWindow();
@@ -57,6 +56,7 @@ protected:
 
 private:
 	void			InitGUI();
+	void			ResizeToContent();
 
 	// These are the interesting functions showing how you can 
 	// interact via BMessages with a Shelf/Container view
@@ -80,6 +80,6 @@ private:
 	bool			fHaveDeskbarHeader;
 	BMessenger		fTarget;
 	BMessageRunner	*fTickRunner;
-	xButton			*fDeleteButton;
+	BButton			*fDeleteButton;
 };
 #endif

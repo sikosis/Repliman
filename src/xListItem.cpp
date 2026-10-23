@@ -4,10 +4,6 @@
 #include "xListItem.h"
 #endif
 
-#ifndef __COLOURS_H__
-#include "Colours.h"
-#endif
-
 #include <math.h>
 
 xListItem::xListItem(const char* name, BBitmap *icon, int32 i, int32 location)
@@ -53,17 +49,18 @@ xListItem::GetName() const
 
 
 void
-xListItem::DrawItem(BView *owner, BRect frame, bool complete)
+xListItem::DrawItem(BView *owner, BRect frame, bool)
 {
-	rgb_color colour;
+	owner->PushState();
 
 	if (IsSelected()) {
-		colour = kHighlight;
+		owner->SetLowUIColor(B_LIST_SELECTED_BACKGROUND_COLOR);
+		owner->SetHighUIColor(B_LIST_SELECTED_ITEM_TEXT_COLOR);
 	} else {
-		colour = owner->ViewColor();
+		owner->SetLowUIColor(B_LIST_BACKGROUND_COLOR);
+		owner->SetHighUIColor(B_LIST_ITEM_TEXT_COLOR);
 	}
 			
-	owner->SetLowColor(colour);
 	owner->FillRect(frame, B_SOLID_LOW);
 
 	if (fIcon != NULL) {
@@ -75,17 +72,13 @@ xListItem::DrawItem(BView *owner, BRect frame, bool complete)
 	owner->MovePenTo(frame.left + 28, frame.bottom - text_pos);
 
 
-	if (IsEnabled())
-		owner->SetHighColor(kBlack);
-	else
-		owner->SetHighColor(kMedGrey);
-
 	owner->DrawString(fName.String());
+	owner->PopState();
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
 void
-xListItem::Update(BView *owner, const BFont *font)
+xListItem::Update(BView *, const BFont *font)
 {
 	font_height height;
 	
@@ -99,6 +92,7 @@ xListItem::Update(BView *owner, const BFont *font)
 		SetHeight(20);
 	else
 		SetHeight(actual_height);
+	SetWidth(font->StringWidth(fName.String()) + 36.0f);
 		
 	// calculate the positions of the bitmap and the text.
 	text_pos = ceil(height.descent) + 2;

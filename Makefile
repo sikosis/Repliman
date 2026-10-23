@@ -5,10 +5,8 @@ TYPE = APP
 APP_MIME_SIG = application/x-vnd.rxc-repliman
 
 SRCS = \
-	src/Colours.cpp \
 	src/xHeaderListItem.cpp \
 	src/xListItem.cpp \
-	src/xButton.cpp \
 	src/replimanWindow.cpp \
 	src/replimanApp.cpp \
 	src/main.cpp

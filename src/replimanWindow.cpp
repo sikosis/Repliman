@@ -8,17 +8,12 @@
 #include "xListItem.h"
 #endif
 
-#ifndef __xBUTTON_H__
-#include "xButton.h"
-#endif
-
 #ifndef __xHEADERLISTITEM_H__
 #include "xHeaderListItem.h"
 #endif
 
-#ifndef __COLOURS_H__
-#include "Colours.h"
-#endif
+#include <LayoutBuilder.h>
+#include <Screen.h>
 
 /*------------------------------------------------------------*/
 struct match_info {
@@ -59,8 +54,8 @@ bool match_id(BListItem *item, void *data)
 /*------------------------------------------------------------*/
 
 replimanWindow::replimanWindow()
-	: BWindow(BRect(100, 50, 380, 300), "Repliman", B_TITLED_WINDOW,
-		B_NOT_RESIZABLE | B_NOT_ZOOMABLE),
+	: BWindow(BRect(100, 50, 500, 350), "Repliman", B_TITLED_WINDOW,
+		0),
 	  fReplicantList(NULL),
 	  fDesktopCount(0),
 	  fDeskbarCount(0),
@@ -101,42 +96,91 @@ replimanWindow::QuitRequested()
 void
 replimanWindow::InitGUI()
 {
-	BRect b = Bounds();
-	BScrollView *sv;
-	
-	BView *parent = new BView(b, "parent", B_FOLLOW_ALL, B_WILL_DRAW);
-	parent->SetViewColor(216, 216, 216, 0);
-	AddChild(parent);
-
-	BRect	r = b;
-	
-	r.InsetBy(10,10);
-	r.right = b.right - 10 - B_H_SCROLL_BAR_HEIGHT;
-	r.bottom = r.top + (20 * 4) + 3;
-	
-	fReplicantList = new BListView(r, "rep_list", B_SINGLE_SELECTION_LIST, 
-		B_FOLLOW_NONE);
+	fReplicantList = new BListView("rep_list", B_SINGLE_SELECTION_LIST);
+	fReplicantList->SetViewUIColor(B_LIST_BACKGROUND_COLOR);
 	fReplicantList->SetSelectionMessage(new BMessage(CMD_REP_SELECTION_CHANGED));
-//	fReplicantList->AddItem(new xHeaderListItem("Deskbar", kBlack));
-	
-	// add the scroll view
-	sv = new BScrollView("rep_scroll_view", fReplicantList, B_FOLLOW_NONE,
-		B_WILL_DRAW, false, true);
 
-	parent->AddChild(sv);
-	// and resize the scroll bar - after AddChild
-//	BScrollBar *scroll_bar = sv->ScrollBar(B_VERTICAL);
-//	scroll_bar->SetSteps(19, 80);
-	
-	r.top = r.bottom + 10;
-	
-	fDeleteButton = new xButton(r, "del", "Delete",
+	BScrollView *scrollView = new BScrollView("rep_scroll_view",
+		fReplicantList, 0, false, true, B_FANCY_BORDER);
+
+	fDeleteButton = new BButton("delete", "Delete",
 		new BMessage(CMD_DELETE_REPLICANT));
-	fDeleteButton->ResizeToPreferred();
 	fDeleteButton->SetEnabled(false);
-	parent->AddChild(fDeleteButton);
-	
-	ResizeTo(b.right, r.bottom + 20 + fDeleteButton->Bounds().bottom);
+
+	BLayoutBuilder::Group<>(this, B_VERTICAL, 10.0f)
+		.SetInsets(10.0f)
+		.Add(scrollView)
+		.AddGroup(B_HORIZONTAL)
+			.AddGlue()
+			.Add(fDeleteButton)
+		.End()
+	.End();
+
+	SetSizeLimits(300.0f, B_SIZE_UNLIMITED, 200.0f, B_SIZE_UNLIMITED);
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+void
+replimanWindow::ResizeToContent()
+{
+	Layout(true);
+
+	float contentWidth = 0.0f;
+	float contentHeight = 40.0f;
+	int32 itemCount = fReplicantList->CountItems();
+
+	for (int32 index = 0; index < itemCount; index++) {
+		BListItem *item = fReplicantList->ItemAt(index);
+		if (item != NULL && item->Width() > contentWidth)
+			contentWidth = item->Width();
+	}
+
+	if (itemCount > 0)
+		contentHeight = fReplicantList->ItemFrame(itemCount - 1).bottom + 1.0f;
+
+	float extraWidth = Bounds().Width() - fReplicantList->Bounds().Width();
+	float extraHeight = Bounds().Height() - fReplicantList->Bounds().Height();
+	float targetWidth = contentWidth + extraWidth + 12.0f;
+	float targetHeight = contentHeight + extraHeight + 4.0f;
+
+	if (targetWidth < 300.0f)
+		targetWidth = 300.0f;
+	if (targetHeight < 200.0f)
+		targetHeight = 200.0f;
+
+	BScreen screen(this);
+	if (screen.IsValid()) {
+		BRect screenFrame = screen.Frame();
+		float maximumWidth = screenFrame.Width() * 0.9f;
+		float maximumHeight = screenFrame.Height() * 0.9f;
+
+		if (targetWidth > maximumWidth)
+			targetWidth = maximumWidth;
+		if (targetHeight > maximumHeight)
+			targetHeight = maximumHeight;
+	}
+
+	ResizeTo(targetWidth, targetHeight);
+
+	if (screen.IsValid()) {
+		BRect screenFrame = screen.Frame();
+		BRect windowFrame = Frame();
+		float horizontalOffset = 0.0f;
+		float verticalOffset = 0.0f;
+
+		if (windowFrame.right > screenFrame.right)
+			horizontalOffset = screenFrame.right - windowFrame.right;
+		if (windowFrame.bottom > screenFrame.bottom)
+			verticalOffset = screenFrame.bottom - windowFrame.bottom;
+		if (windowFrame.left + horizontalOffset < screenFrame.left)
+			horizontalOffset = screenFrame.left - windowFrame.left;
+		if (windowFrame.top + verticalOffset < screenFrame.top)
+			verticalOffset = screenFrame.top - windowFrame.top;
+
+		if (horizontalOffset != 0.0f || verticalOffset != 0.0f)
+			MoveBy(horizontalOffset, verticalOffset);
+	}
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 /*------------------------------------------------------------*/
@@ -163,6 +207,10 @@ replimanWindow::MessageReceived(BMessage *msg)
 			bool	enabled;
 			enabled = (fReplicantList->CurrentSelection() >= 0);
 			fDeleteButton->SetEnabled(enabled);
+			break;
+		}
+		case CMD_RESIZE_TO_CONTENT: {
+			ResizeToContent();
 			break;
 		}
 		default:
@@ -196,8 +244,10 @@ replimanWindow::UpdateList(bool make_empty)
 	result = UpdateQuasiList(M_DESKTOP, make_empty);
 	result = UpdateQuasiList(M_DESKBAR, make_empty) || result;
 	
-	if (result || make_empty)
+	if (result || make_empty) {
 		PostMessage(CMD_REP_SELECTION_CHANGED);
+		PostMessage(CMD_RESIZE_TO_CONTENT);
+	}
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
@@ -207,7 +257,7 @@ replimanWindow::UpdateList(bool make_empty)
 bool
 replimanWindow::UpdateQuasiList(int32 target, bool make_empty)
 {
-	bool	deleted_something = false;
+	bool	listChanged = false;
 	int32	index = 0;
 	int32	uid;
 	
@@ -234,9 +284,9 @@ replimanWindow::UpdateQuasiList(int32 target, bool make_empty)
 		for (int32 i = 0; i < count; i++)
 			delete fReplicantList->RemoveItem(pos);
 			
-		deleted_something = true;
+		listChanged = count > 0;
 
-		return deleted_something;
+		return listChanged;
 	}
 	
 	if (!make_empty) {
@@ -270,7 +320,7 @@ replimanWindow::UpdateQuasiList(int32 target, bool make_empty)
 			if (IsReplicantLoaded(uid) == false) {
 				fReplicantList->RemoveItem(item);
 				delete item;
-				deleted_something = true;
+				listChanged = true;
 				if (target == M_DESKTOP)
 					fDesktopCount--;
 				else
@@ -288,12 +338,14 @@ replimanWindow::UpdateQuasiList(int32 target, bool make_empty)
 			if (fDesktopCount == 0 && fHaveDesktopHeader) {
 				delete fReplicantList->RemoveItem((int32)0);
 				fHaveDesktopHeader = false;
+				listChanged = true;
 			}
 		} else {
 			if (fDeskbarCount == 0 && fHaveDeskbarHeader) {
 				int32 pos = (fHaveDesktopHeader ? fDesktopCount + 1 : 0);
 				delete fReplicantList->RemoveItem(pos);
 				fHaveDeskbarHeader = false;
+				listChanged = true;
 			}
 		}
 	}
@@ -327,6 +379,7 @@ replimanWindow::UpdateQuasiList(int32 target, bool make_empty)
 			
 			fReplicantList->AddItem(new xListItem(name, icon, uid, target), pos);
 			delete icon;
+			listChanged = true;
 			if (target == M_DESKTOP)
 				fDesktopCount++;
 			else
@@ -337,18 +390,20 @@ replimanWindow::UpdateQuasiList(int32 target, bool make_empty)
 	// we should add the header if it does not exist
 	if (target == M_DESKTOP) {
 		if (!fHaveDesktopHeader && fDesktopCount != 0) {
-			fReplicantList->AddItem(new xHeaderListItem("Desktop", kFirstGreen),0);
+			fReplicantList->AddItem(new xHeaderListItem("Desktop"), 0);
 			fHaveDesktopHeader = true;
+			listChanged = true;
 		}
 	} else {
 		if (!fHaveDeskbarHeader && fDeskbarCount != 0) {
 			int32 pos = (fHaveDesktopHeader ? fDesktopCount + 1 : 0);
-			fReplicantList->AddItem(new xHeaderListItem("Deskbar", kSecondGreen),pos);
+			fReplicantList->AddItem(new xHeaderListItem("Deskbar"), pos);
 			fHaveDeskbarHeader = true;
+			listChanged = true;
 		}
 	}
 	
-	return deleted_something;
+	return listChanged;
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 

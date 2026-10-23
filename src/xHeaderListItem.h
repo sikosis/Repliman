@@ -10,7 +10,7 @@
 
 class xHeaderListItem : public BListItem {
 public:
-					xHeaderListItem(const char* name, rgb_color background_colour);
+					xHeaderListItem(const char* name);
 
 protected:
 	virtual void	DrawItem(BView *owner, BRect frame, bool complete = false);
@@ -19,8 +19,6 @@ private:
 	BString			fName;
 	float 			actual_height;
 	int				text_pos;
-	rgb_color		fColour;
-	const BFont 	*current_font;
 };
 #endif
 // ------------------------------------------------------- xHeaderListItem.h --

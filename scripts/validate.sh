@@ -25,6 +25,11 @@ done
 
 git diff --check
 
+if grep -ERn 'kBlack|kWhite|kHighlight|kMedGrey|kFirstGreen|kSecondGreen|SetViewColor\([[:space:]]*[0-9]' src; then
+	echo "Active sources contain legacy hard-coded interface colours." >&2
+	exit 1
+fi
+
 if [ "$(uname -s)" = "Haiku" ] && command -v findpaths >/dev/null 2>&1; then
 	make clean
 	make

@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599c" alt="C++17">
 </p>
 
-Repliman is a small legacy Haiku/BeOS utility for listing and removing stubborn desktop and deskbar replicants—those little app fragments that can get stuck in the desktop or Deskbar and refuse to go away cleanly. It is a native C++ application built against the classic Be API, with a simple window that refreshes running replicants and lets the user delete the selected one.
+Repliman is a small legacy Haiku/BeOS utility for listing and removing stubborn desktop and deskbar replicants—those little app fragments that can get stuck in the desktop or Deskbar and refuse to go away cleanly. It is a native C++ application built against the classic Be API, with a simple window that refreshes running replicants and lets the user delete the selected one. The interface follows Haiku's configured system colours, including dark appearances, and automatically sizes itself to the loaded replicants.
 
 This repository is a maintained continuation of the original Repliman source. The untouched upstream snapshot is retained in `Repliman-Original`; active development lives in `src` and `resources`.
 
