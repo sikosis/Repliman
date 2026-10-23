@@ -6,12 +6,15 @@
 
 #include <math.h>
 
-xListItem::xListItem(const char* name, BBitmap *icon, int32 i, int32 location)
+xListItem::xListItem(const char* name, BBitmap *icon, int32 i, int32 location,
+	bool disabled, int64 storageID)
 	: BListItem(),
 	  fName(name != NULL ? name : "Unnamed replicant"),
 	  fIcon(icon != NULL ? new BBitmap(icon) : NULL),
 	  fID(i),
-	  fLocation(location)
+	  fLocation(location),
+	  fStorageID(storageID),
+	  fDisabled(disabled)
 {
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
@@ -36,6 +39,22 @@ int32
 xListItem::GetLocation() const
 {
 	return fLocation;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+int64
+xListItem::GetStorageID() const
+{
+	return fStorageID;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+bool
+xListItem::IsDisabled() const
+{
+	return fDisabled;
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 

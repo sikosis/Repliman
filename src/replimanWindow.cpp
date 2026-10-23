@@ -12,9 +12,42 @@
 #include "xHeaderListItem.h"
 #endif
 
+#include <Alert.h>
+#include <Directory.h>
+#include <File.h>
 #include <LayoutBuilder.h>
+#include <OS.h>
 #include <Resources.h>
 #include <Screen.h>
+
+#include <string.h>
+
+static const uint32 kDisabledReplicantsMessage = 'Rdis';
+static const char *kDisabledReplicantField = "replicant";
+static const char *kArchiveField = "archive";
+static const char *kLocationField = "location";
+static const char *kNameField = "name";
+static const char *kPositionField = "position";
+static const char *kStorageIDField = "storage_id";
+
+static status_t
+disabled_replicants_path(BPath *path)
+{
+	status_t status = find_directory(B_USER_SETTINGS_DIRECTORY, path, true);
+	if (status != B_OK)
+		return status;
+
+	status = path->Append("Repliman");
+	if (status != B_OK)
+		return status;
+
+	status = create_directory(path->Path(), 0755);
+	if (status != B_OK && status != B_FILE_EXISTS)
+		return status;
+
+	return path->Append("disabled_replicants");
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
 
 /*------------------------------------------------------------*/
 struct match_info {
@@ -62,10 +95,15 @@ replimanWindow::replimanWindow()
 	  fDeskbarCount(0),
 	  fHaveDesktopHeader(false),
 	  fHaveDeskbarHeader(false),
+	  fDisabledReplicants(kDisabledReplicantsMessage),
 	  fTickRunner(NULL),
-	  fDeleteButton(NULL)
+	  fRemoveButton(NULL),
+	  fDisableButton(NULL)
 {
 	InitGUI();
+	status_t status = LoadDisabledReplicants();
+	if (status != B_OK)
+		ShowError("load the disabled replicants", status);
 
 	BMessage tickMessage(CMD_TICK);
 	fTickRunner = new BMessageRunner(BMessenger(this), &tickMessage, 1000000);
@@ -102,20 +140,73 @@ replimanWindow::InitGUI()
 	BScrollView *scrollView = new BScrollView("rep_scroll_view",
 		fReplicantList, 0, false, true, B_FANCY_BORDER);
 
-	fDeleteButton = new BButton("delete", "Delete",
-		new BMessage(CMD_DELETE_REPLICANT));
-	fDeleteButton->SetEnabled(false);
+	fRemoveButton = new BButton("remove", "Remove",
+		new BMessage(CMD_REMOVE_REPLICANT));
+	fRemoveButton->SetEnabled(false);
+
+	fDisableButton = new BButton("disable", "Disable",
+		new BMessage(CMD_TOGGLE_REPLICANT));
+	fDisableButton->SetEnabled(false);
 
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 10.0f)
 		.SetInsets(10.0f)
 		.Add(scrollView)
 		.AddGroup(B_HORIZONTAL)
 			.AddGlue()
-			.Add(fDeleteButton)
+			.Add(fDisableButton)
+			.Add(fRemoveButton)
 		.End()
 	.End();
 
 	SetSizeLimits(300.0f, B_SIZE_UNLIMITED, 200.0f, B_SIZE_UNLIMITED);
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+void
+replimanWindow::UpdateButtons()
+{
+	int32 selection = fReplicantList->CurrentSelection();
+	xListItem *item = dynamic_cast<xListItem*>(fReplicantList->ItemAt(selection));
+	bool enabled = selection >= 0 && item != NULL;
+
+	fRemoveButton->SetEnabled(enabled);
+	fDisableButton->SetEnabled(enabled);
+	fDisableButton->SetLabel(enabled && item->IsDisabled() ? "Enable" : "Disable");
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+void
+replimanWindow::ShowError(const char *operation, status_t status) const
+{
+	BString message("Repliman could not ");
+	message << operation << ".\n\n" << strerror(status);
+
+	BAlert *alert = new BAlert("Repliman", message.String(), "OK", NULL, NULL,
+		B_WIDTH_AS_USUAL, B_STOP_ALERT);
+	alert->Go();
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+bool
+replimanWindow::ConfirmRemoval(const xListItem *item) const
+{
+	BString message;
+	if (item->IsDisabled()) {
+		message << "Permanently remove the saved replicant \"" << item->GetName()
+			<< "\"? It will no longer be possible to enable it.";
+	} else {
+		message << "Remove the replicant \"" << item->GetName() << "\" from "
+			<< (item->GetLocation() == M_DESKBAR ? "Deskbar" : "the Desktop")
+			<< "? This cannot be undone.";
+	}
+
+	BAlert *alert = new BAlert("Remove replicant", message.String(), "No", "Yes",
+		NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+	alert->SetShortcut(0, B_ESCAPE);
+	return alert->Go() == 1;
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
@@ -192,20 +283,29 @@ replimanWindow::MessageReceived(BMessage *msg)
 			UpdateList(false);
 			break;
 		}
-		case CMD_DELETE_REPLICANT: {
-			int32	sel = fReplicantList->CurrentSelection();
-			xListItem *item = dynamic_cast<xListItem*>(fReplicantList->ItemAt(sel));
-			if (sel < 0 || item == NULL)
+		case CMD_REMOVE_REPLICANT: {
+			int32 selection = fReplicantList->CurrentSelection();
+			xListItem *item = dynamic_cast<xListItem*>(
+				fReplicantList->ItemAt(selection));
+			if (selection < 0 || item == NULL)
 				break;
-//			printf("deleting %s with id = %ld\n", item->GetName(), item->GetID());
-//			printf("after delete %s\n", strerror(DeleteReplicant(item->GetID(), item->GetLocation())));
-			DeleteReplicant(item->GetID(), item->GetLocation());
+			RemoveSelectedReplicant(item);
+			break;
+		}
+		case CMD_TOGGLE_REPLICANT: {
+			int32 selection = fReplicantList->CurrentSelection();
+			xListItem *item = dynamic_cast<xListItem*>(
+				fReplicantList->ItemAt(selection));
+			if (selection < 0 || item == NULL)
+				break;
+			if (item->IsDisabled())
+				EnableReplicant(item);
+			else
+				DisableReplicant(item);
 			break;
 		}
 		case CMD_REP_SELECTION_CHANGED: {
-			bool	enabled;
-			enabled = (fReplicantList->CurrentSelection() >= 0);
-			fDeleteButton->SetEnabled(enabled);
+			UpdateButtons();
 			break;
 		}
 		case CMD_RESIZE_TO_CONTENT: {
@@ -230,6 +330,103 @@ replimanWindow::EmptyLists()
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
+status_t
+replimanWindow::LoadDisabledReplicants()
+{
+	BPath path;
+	status_t status = disabled_replicants_path(&path);
+	if (status != B_OK)
+		return status;
+
+	BFile file(path.Path(), B_READ_ONLY);
+	status = file.InitCheck();
+	if (status == B_ENTRY_NOT_FOUND) {
+		fDisabledReplicants = BMessage(kDisabledReplicantsMessage);
+		return B_OK;
+	}
+	if (status != B_OK)
+		return status;
+
+	BMessage store;
+	status = store.Unflatten(&file);
+	if (status != B_OK)
+		return status;
+
+	fDisabledReplicants = store;
+	return B_OK;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+status_t
+replimanWindow::SaveDisabledReplicants(BMessage &store) const
+{
+	BPath path;
+	status_t status = disabled_replicants_path(&path);
+	if (status != B_OK)
+		return status;
+
+	BFile file(path.Path(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+	status = file.InitCheck();
+	if (status != B_OK)
+		return status;
+
+	return store.Flatten(&file);
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+void
+replimanWindow::AppendDisabledReplicants()
+{
+	bool haveHeader = false;
+	BMessage record;
+	for (int32 index = 0;
+		fDisabledReplicants.FindMessage(kDisabledReplicantField, index,
+			&record) == B_OK; index++) {
+		const char *name;
+		int32 location;
+		int64 storageID;
+		BMessage archive;
+		if (record.FindString(kNameField, &name) != B_OK
+			|| record.FindInt32(kLocationField, &location) != B_OK
+			|| record.FindInt64(kStorageIDField, &storageID) != B_OK
+			|| record.FindMessage(kArchiveField, &archive) != B_OK) {
+			continue;
+		}
+
+		if (!haveHeader) {
+			fReplicantList->AddItem(new xHeaderListItem("Disabled"));
+			haveHeader = true;
+		}
+
+		BBitmap *icon = GetIconFromArchive(archive);
+		fReplicantList->AddItem(new xListItem(name, icon, -1, location, true,
+			storageID));
+		delete icon;
+	}
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+bool
+replimanWindow::FindDisabledReplicant(int64 storageID, BMessage *record,
+	int32 *recordIndex) const
+{
+	BMessage candidate;
+	for (int32 index = 0;
+		fDisabledReplicants.FindMessage(kDisabledReplicantField, index,
+			&candidate) == B_OK; index++) {
+		int64 candidateID;
+		if (candidate.FindInt64(kStorageIDField, &candidateID) == B_OK
+			&& candidateID == storageID) {
+			*record = candidate;
+			*recordIndex = index;
+			return true;
+		}
+	}
+
+	return false;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
 void
 replimanWindow::UpdateList(bool make_empty)
 {
@@ -240,6 +437,8 @@ replimanWindow::UpdateList(bool make_empty)
 		
 	result = UpdateQuasiList(M_DESKTOP, make_empty);
 	result = UpdateQuasiList(M_DESKBAR, make_empty) || result;
+	if (make_empty)
+		AppendDisabledReplicants();
 	
 	if (result || make_empty) {
 		PostMessage(CMD_REP_SELECTION_CHANGED);
@@ -365,7 +564,7 @@ replimanWindow::UpdateQuasiList(int32 target, bool make_empty)
 		if (rep_info.FindString("result", &name) == B_OK) {
 			int32 pos;
 			BBitmap *icon;
-			icon = GetReplicantIcon(uid);
+			icon = GetReplicantIcon(uid, target);
 
 			if (target == M_DESKTOP) {
 				pos = (fHaveDesktopHeader ? fDesktopCount+1 : 0);			
@@ -436,33 +635,26 @@ replimanWindow::GetReplicantName(int32 uid, BMessage *reply) const
 //---------------------------------------------------------------------------------------------------------------------------------//
 
 BBitmap *
-replimanWindow::GetReplicantIcon(int32 uid)
+replimanWindow::GetReplicantIcon(int32 uid, int32 location)
 {
-	BMessage	request(B_GET_PROPERTY);		// Get will return the archive msg
-	BMessage	uid_specifier(B_ID_SPECIFIER);	// specifying via ID
-	BMessage	reply;
-	status_t	err;
-	status_t	e;
-			
-	// IDs are specified using code like the following 3 lines:
-	uid_specifier.AddInt32("id", uid);
-	uid_specifier.AddString("property", "Replicant");
-	request.AddSpecifier(&uid_specifier);
-	
-	if ((err = fTarget.SendMessage(&request, &reply)) != B_OK)
+	BMessage archive;
+	BPoint position;
+	if (GetReplicantArchive(uid, location, &archive, &position) != B_OK)
 		return NULL;
-	
-	if (((err = reply.FindInt32("error", &e)) != B_OK) || (e != B_OK))
-		return NULL;
-	
-	// OK, let's get the archive message
-	BMessage	data;
-	reply.FindMessage("result", &data);
+
+	return GetIconFromArchive(archive);
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+BBitmap *
+replimanWindow::GetIconFromArchive(const BMessage &archive) const
+{
 
 	BBitmap *icon = new BBitmap(BRect(0,0,15,15), B_CMAP8);
 	// what is the signature of this class?
 	const char *name;
-	if (data.FindString("add_on", &name) == B_OK) {
+	if (archive.FindString("add_on", &name) == B_OK) {
 		entry_ref ref;
 		BMimeType mimetype(name);
 //		printf("add_on = %s and %s\n", name, appInfo.ref.name);
@@ -497,6 +689,49 @@ replimanWindow::GetReplicantIcon(int32 uid)
 	} //else { // we do not know the app_signature or icon...
 
 	return icon;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+
+status_t
+replimanWindow::GetReplicantArchive(int32 uid, int32 location,
+	BMessage *archive, BPoint *position) const
+{
+	BMessage request(B_GET_PROPERTY);
+	BMessage uidSpecifier(B_ID_SPECIFIER);
+	BMessage reply;
+	status_t status;
+	status_t shelfStatus;
+
+	uidSpecifier.AddInt32("id", uid);
+	uidSpecifier.AddString("property", "Replicant");
+	request.AddSpecifier(&uidSpecifier);
+
+	BMessenger target = MessengerForTarget(location);
+	if (!target.IsValid())
+		return B_BAD_VALUE;
+
+	status = target.SendMessage(&request, &reply);
+	if (status != B_OK)
+		return status;
+
+	status = reply.FindInt32("error", &shelfStatus);
+	if (status != B_OK)
+		return status;
+	if (shelfStatus != B_OK)
+		return shelfStatus;
+
+	status = reply.FindMessage("result", archive);
+	if (status != B_OK)
+		return status;
+
+	BRect frame;
+	if (archive->FindRect("_frame", &frame) == B_OK)
+		*position = frame.LeftTop();
+	else
+		*position = BPoint(0.0f, 0.0f);
+
+	return B_OK;
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
 
@@ -629,12 +864,171 @@ replimanWindow::MessengerForTarget(type_code w) const
 /*------------------------------------------------------------*/
 
 status_t
-replimanWindow::DeleteReplicant(int32 uid, int32 location)
+replimanWindow::RestoreReplicant(const BMessage &archive, int32 location,
+	BPoint position) const
+{
+	BMessenger target = MessengerForTarget(location);
+	if (!target.IsValid())
+		return B_BAD_VALUE;
+
+	BMessage request(B_CREATE_PROPERTY);
+	BMessage reply;
+	status_t status = request.AddMessage("data", &archive);
+	if (status == B_OK)
+		status = request.AddPoint("location", position);
+	if (status == B_OK)
+		status = request.AddSpecifier("Replicant");
+	if (status != B_OK)
+		return status;
+
+	status = target.SendMessage(&request, &reply);
+	if (status != B_OK)
+		return status;
+
+	status_t shelfStatus;
+	status = reply.FindInt32("error", &shelfStatus);
+	if (status != B_OK)
+		return status;
+
+	return shelfStatus;
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+void
+replimanWindow::DisableReplicant(const xListItem *item)
+{
+	BMessage archive;
+	BPoint position;
+	status_t status = GetReplicantArchive(item->GetID(), item->GetLocation(),
+		&archive, &position);
+	if (status != B_OK) {
+		ShowError("save the selected replicant", status);
+		return;
+	}
+
+	BMessage record;
+	status = record.AddInt64(kStorageIDField, real_time_clock_usecs());
+	if (status == B_OK)
+		status = record.AddString(kNameField, item->GetName());
+	if (status == B_OK)
+		status = record.AddInt32(kLocationField, item->GetLocation());
+	if (status == B_OK)
+		status = record.AddPoint(kPositionField, position);
+	if (status == B_OK)
+		status = record.AddMessage(kArchiveField, &archive);
+	if (status != B_OK) {
+		ShowError("prepare the disabled replicant", status);
+		return;
+	}
+
+	BMessage previousStore(fDisabledReplicants);
+	status = fDisabledReplicants.AddMessage(kDisabledReplicantField, &record);
+	if (status == B_OK)
+		status = SaveDisabledReplicants(fDisabledReplicants);
+	if (status != B_OK) {
+		fDisabledReplicants = previousStore;
+		ShowError("store the disabled replicant", status);
+		return;
+	}
+
+	status = RemoveReplicant(item->GetID(), item->GetLocation());
+	if (status != B_OK) {
+		BMessage restoredStore(previousStore);
+		if (SaveDisabledReplicants(restoredStore) == B_OK)
+			fDisabledReplicants = restoredStore;
+		ShowError("disable the selected replicant", status);
+		return;
+	}
+
+	UpdateList(true);
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+void
+replimanWindow::EnableReplicant(const xListItem *item)
+{
+	BMessage record;
+	int32 recordIndex;
+	if (!FindDisabledReplicant(item->GetStorageID(), &record, &recordIndex)) {
+		ShowError("find the saved replicant", B_ENTRY_NOT_FOUND);
+		return;
+	}
+
+	BMessage archive;
+	BPoint position;
+	int32 location;
+	status_t status = record.FindMessage(kArchiveField, &archive);
+	if (status == B_OK)
+		status = record.FindInt32(kLocationField, &location);
+	if (status == B_OK)
+		status = record.FindPoint(kPositionField, &position);
+	if (status != B_OK) {
+		ShowError("read the saved replicant", status);
+		return;
+	}
+
+	BMessage updatedStore(fDisabledReplicants);
+	status = updatedStore.RemoveData(kDisabledReplicantField, recordIndex);
+	if (status == B_OK)
+		status = SaveDisabledReplicants(updatedStore);
+	if (status != B_OK) {
+		ShowError("update the disabled replicant store", status);
+		return;
+	}
+
+	status = RestoreReplicant(archive, location, position);
+	if (status != B_OK) {
+		BMessage restoredStore(fDisabledReplicants);
+		SaveDisabledReplicants(restoredStore);
+		ShowError("enable the selected replicant", status);
+		return;
+	}
+
+	fDisabledReplicants = updatedStore;
+	UpdateList(true);
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+void
+replimanWindow::RemoveSelectedReplicant(const xListItem *item)
+{
+	if (!ConfirmRemoval(item))
+		return;
+
+	status_t status;
+	if (item->IsDisabled()) {
+		BMessage record;
+		int32 recordIndex;
+		if (!FindDisabledReplicant(item->GetStorageID(), &record, &recordIndex)) {
+			ShowError("find the saved replicant", B_ENTRY_NOT_FOUND);
+			return;
+		}
+
+		BMessage updatedStore(fDisabledReplicants);
+		status = updatedStore.RemoveData(kDisabledReplicantField, recordIndex);
+		if (status == B_OK)
+			status = SaveDisabledReplicants(updatedStore);
+		if (status == B_OK)
+			fDisabledReplicants = updatedStore;
+	} else {
+		status = RemoveReplicant(item->GetID(), item->GetLocation());
+	}
+
+	if (status != B_OK) {
+		ShowError("remove the selected replicant", status);
+		return;
+	}
+
+	UpdateList(true);
+}
+//---------------------------------------------------------------------------------------------------------------------------------//
+
+status_t
+replimanWindow::RemoveReplicant(int32 uid, int32 location)
 {
 	status_t status;
 	
-//	printf("deleting replicant\n");
-	// delete the given replicant from the deskbar
+	// Remove the given replicant from the Deskbar or Desktop shelf.
 	if (location == M_DESKBAR) {
 		BDeskbar desk;
 		status = desk.RemoveItem(uid);

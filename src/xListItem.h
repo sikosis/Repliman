@@ -10,11 +10,14 @@
 
 class xListItem : public BListItem {
 public:
-					xListItem(const char* name, BBitmap *icon, int32 i, int32 location);
+					xListItem(const char* name, BBitmap *icon, int32 i, int32 location,
+						bool disabled = false, int64 storageID = -1);
 					~xListItem();
 
 			int32	GetID() const;
 			int32	GetLocation() const;
+			int64	GetStorageID() const;
+			bool	IsDisabled() const;
 	const char*		GetName() const;
 protected:
 	virtual void	DrawItem(BView *owner, BRect frame, bool complete = false);
@@ -24,6 +27,8 @@ private:
 	BBitmap			*fIcon;
 	int32			fID;
 	int32			fLocation;
+	int64			fStorageID;
+	bool			fDisabled;
 	float 			actual_height;
 	int				text_pos;
 	int				bitmap_pos;
