@@ -13,6 +13,7 @@
 #endif
 
 #include <LayoutBuilder.h>
+#include <Resources.h>
 #include <Screen.h>
 
 /*------------------------------------------------------------*/
@@ -90,8 +91,6 @@ replimanWindow::QuitRequested()
 	return true;
 }
 //---------------------------------------------------------------------------------------------------------------------------------//
-
-#pragma mark -
 
 void
 replimanWindow::InitGUI()
@@ -220,8 +219,6 @@ replimanWindow::MessageReceived(BMessage *msg)
 //---------------------------------------------------------------------------------------------------------------------------------//
 
 /*------------------------------------------------------------*/
-#pragma mark -
-
 void
 replimanWindow::EmptyLists()
 {
@@ -408,8 +405,6 @@ replimanWindow::UpdateQuasiList(int32 target, bool make_empty)
 //---------------------------------------------------------------------------------------------------------------------------------//
 
 /*------------------------------------------------------------*/
-#pragma mark -
-
 status_t
 replimanWindow::GetReplicantName(int32 uid, BMessage *reply) const
 {
